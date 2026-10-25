@@ -328,36 +328,6 @@ XXXXXXXXXXXXXXXXXX
 .......XooX.......
 .......XooX.......
 """
-TENT = mirror("""
-.......................X
-.......................X
-.......................X
-.......................X
-.....................XXX
-...................XXooX
-.................XXoooXX
-...............XXXooooXX
-.............XXoXooooXXX
-...........XXooXooooXXXX
-.........XXoooXooooXXXXX
-.......XXooooXooooXXXXXX
-.....XXoooooXooooXXXXXXX
-...XXooooooXooooXXXXXXXX
-.XXXXXXXXXXXXXXXXXXXXXXX
-XXoXXoXXoXXoXXoXXoXXoXXo
-XooXooXooXooXooXooXooXoo
-.XoooooooXXXXXXXXooooooo
-.XoooooooXooooooXooooooo
-.XoooooooXooooooXXXXXXXo
-.XoooooooXooooooXoooooXo
-.XoooooooXooooooXoooooXo
-.XoooooooXooooooXoooooXo
-.XoooooooXooooooXoooooXo
-.XoooooooXooooooXoooooXo
-.XoooooooXooooooXoooooXo
-.XXXXXXXXXXXXXXXXXXXXXXX
-""")
-
 # ---- new things ----
 DOVE_0 = """
 ..........XXX.........

@@ -6,8 +6,12 @@
 #include "fxdata.h"
 #include "tables.h"
 #include "font.h"
+#include <ArduboyTones.h>
 
 Arduboy2Base ab;
+ArduboyTones snd(ab.audio.enabled);
+// "Joyful, Joyful, We Adore Thee" (Beethoven's Ode to Joy, hymn tune Hymn to Joy, public domain): menus and aiming
+const uint16_t SONG[] PROGMEM = {330,402,0,40,330,402,0,40,349,402,0,40,392,402,0,40,392,402,0,40,349,402,0,40,330,402,0,40,294,402,0,40,262,402,0,40,262,402,0,40,294,402,0,40,330,402,0,40,330,623,0,40,294,181,0,40,294,844,0,40,330,402,0,40,330,402,0,40,349,402,0,40,392,402,0,40,392,402,0,40,349,402,0,40,330,402,0,40,294,402,0,40,262,402,0,40,262,402,0,40,294,402,0,40,330,402,0,40,294,623,0,40,262,181,0,40,262,844,0,40,0,884, TONES_END};
 ARDUBOY_NO_USB   // saves space; uploading a new game needs the reset button / FX menu, like Pocket Rocket
 // NES/SNES style: the outside button (Arduboy B) is GO, the inside one (Arduboy A) is the extra button
 #define BTN_GO B_BUTTON
@@ -26,7 +30,7 @@ int16_t sin360(int16_t d) { d %= 360; if (d < 0) d += 360; if (d < 90) return is
 #define SEG 56         // ground object spacing
 #define ASEG 40        // air object spacing
 
-enum { M_TITLE, M_STORY, M_CONTROLS, M_AIM, M_POWER, M_FLY, M_DONE };
+enum { M_TITLE, M_STORY, M_CONTROLS, M_AIM, M_POWER, M_FLY, M_SOUND };
 uint8_t mode = M_TITLE;
 uint16_t seed;
 uint32_t best;
@@ -39,7 +43,6 @@ float power;              // 0..1
 int8_t pdir = 1;
 bool perfect, flying, bounced, stopped;
 uint8_t spin;             // man rotation frame 0..15 (x16 for smooth spin)
-uint16_t spinAcc;
 uint32_t points;
 uint16_t tick, doneT, fireT;
 uint8_t endReason;        // 0 ground, 2 hay, 3 cactus, 4 stuck in mud
@@ -131,9 +134,6 @@ const uint8_t GW[] = {0, TRAMP_W, SPRING_W, BOMB_W, RAMP_W, HAY_W, CACTUS_W, MIN
 const uint8_t GH[] = {0, TRAMP_H, SPRING_H, BOMB_H, RAMP_H, HAY_H, CACTUS_H, MINI_H, FAN_H, MUD_H};
 uint8_t gType(uint16_t s) {
   if (s < 3) return G_NONE;
-#ifdef TESTG
-  return (s & 1) ? TESTG : G_NONE;
-#endif
   uint8_t r = hsh(s, 1) % 100;
   if (r < 13) return G_TRAMP;
   if (r < 21) return G_SPRING;
@@ -153,9 +153,6 @@ int32_t gX(uint16_t s) { return (int32_t)s * SEG + (hsh(s, 2) & 31); }
 enum { A_NONE, A_STAR, A_BALLOON, A_DOVE, A_BELL, A_WINGS };
 uint8_t aType(uint16_t s) {
   if (s < 4) return A_NONE;
-#ifdef TESTA
-  return (s % 3 == 0) ? TESTA : A_NONE;
-#endif
   uint8_t r = hsh(s, 3) % 100;
   if (r < 32) return A_NONE;
   if (r < 60) return A_STAR;
@@ -277,6 +274,7 @@ void stepBibles() {
         if (b.x < cx - 4 || b.x > cx + CROWD_W + 2) continue;
         markUsed(k | 0x4000); souls += 4; points += 50;
         addPopAt(P_SAVED, 0, (int16_t)(b.x - camX), GY - (int16_t)(0 - camH) - 22);
+        snd.tone(NOTE_C6, 40, NOTE_E6, 40, NOTE_G6, 80);   // a soul saved
         break;
       }
     }
@@ -434,11 +432,9 @@ void newGame() {
 void fire() {
   float v = 2.6 + power * 5.4;
   perfect = power > 0.965;
-  if (perfect) { v *= 1.18; addPop(1, 0); }
+  if (perfect) { v *= 1.18; addPop(P_PERFECT, 0); }
+  if (perfect) snd.tone(NOTE_C3, 60, NOTE_G2, 60, NOTE_C6, 60); else snd.tone(NOTE_C3, 70, NOTE_G2, 80, NOTE_C2, 90);   // BOOM (with a ding on top for PERFECT)
   mx = muzX(); mh = muzH();
-#ifdef TESTFAR
-  mx += 40000; camX += 40000;
-#endif
   vx = icos(angleDeg) * v / 256; vh = isin(angleDeg) * v / 256;
   flying = true; fireT = 0; mode = M_FLY; setPose(PO_SUPER, 0, 0);
   flashT = 9; shakeT = 8;
@@ -450,6 +446,9 @@ void stopMan(uint8_t why) {
   vx = vh = 0; stopped = true; endReason = why; doneT = 0;
   static const uint8_t EP[] = {0, 0, P_HAY, P_OUCH, P_STUCK};
   if (why) addPop(EP[why], 0);
+  if (why == 2) snd.tone(NOTE_E3, 40, NOTE_C3, 60);            // soft thud into the hay
+  else if (why == 3) snd.tone(NOTE_A5, 50, NOTE_D5, 90);       // OUCH! a cactus
+  else if (why == 4) snd.tone(NOTE_D3, 60, NOTE_A2, 120);      // stuck in the mud
 }
 
 // ramp surface height at world x (30 degree slope rising to the right)
@@ -470,16 +469,16 @@ void groundTouch() {
       sp += 0.6;
       vx = sp * 0.866; vh = sp * 0.5; mh = top + 1;   // fly off at 30 degrees
       setPose(PO_SUPER, 0, 0);
-      if (!isUsed(k)) { markUsed(k); points += 60; addPop(P_RAMP, 0); hits++; dropBibles(1); }
+      if (!isUsed(k)) { markUsed(k); points += 60; addPop(P_RAMP, 0); hits++; dropBibles(1); snd.tone(NOTE_C4, 30, NOTE_E4, 30, NOTE_G4, 40); }
       bounced = true;
     } else if (t == G_FAN) {
       if (mx < x0 - 2 || mx > x0 + FAN_W + 2 || mh > 90) continue;
       vh += 0.32; if (vh > 4.2) vh = 4.2;
       if (pose != PO_PRAY) setPose(PO_FLOAT, 20, 0);
-      if (!isUsed(k)) { markUsed(k); points += 40; addPop(P_WHOOSH, 0); hits++; }
+      if (!isUsed(k)) { markUsed(k); points += 40; addPop(P_WHOOSH, 0); hits++; snd.tone(NOTE_A3, 40, NOTE_C4, 40, NOTE_E4, 60); }
     } else if (t == G_MUD) {
       if (mx < x0 || mx > x0 + MUD_W - 2 || mh > 2) continue;
-      if (!isUsed(k)) { markUsed(k); addPop(P_SPLAT, 0); burst(mx, 1, 6, 1.0); }
+      if (!isUsed(k)) { markUsed(k); addPop(P_SPLAT, 0); burst(mx, 1, 6, 1.0); snd.tone(NOTE_E2, 50, NOTE_C2, 70); }
       vx *= 0.86; if (vh < 0) vh = 0;
       if (vx < 0.25) stopMan(4);
     }
@@ -498,13 +497,13 @@ void groundHit() {
     if (mh > GH[t] - 4) continue;
     hitSeg = k; hits++;
     switch (t) {
-      case G_TRAMP: dropBibles(2); vh = max(-vh * 0.9, 3.6); points += 50; addPop(P_PTS, 50); sqSeg = k; sqT = 10; setPose(PO_FLOAT, 45, 0); break;
-      case G_SPRING: dropBibles(2); vh = 5.2; vx += 0.8; points += 75; addPop(P_PTS, 75); sqSeg = k; sqT = 10; setPose(PO_TUMBLE, 0, 0.75); break;
-      case G_BOMB: dropBibles(5); vh = 6.0; vx += 2.5; points += 100; addPop(P_BOOM, 0); markUsed(k); burst(mx, 4, 14, 2.5);
+      case G_TRAMP: dropBibles(2); vh = max(-vh * 0.9, 3.6); points += 50; addPop(P_PTS, 50); sqSeg = k; sqT = 10; setPose(PO_FLOAT, 45, 0); snd.tone(NOTE_C4, 30, NOTE_G4, 30, NOTE_C5, 50); break;   // boing
+      case G_SPRING: dropBibles(2); vh = 5.2; vx += 0.8; points += 75; addPop(P_PTS, 75); sqSeg = k; sqT = 10; setPose(PO_TUMBLE, 0, 0.75); snd.tone(NOTE_G4, 25, NOTE_D5, 25, NOTE_G5, 40); break;   // sproing
+      case G_BOMB: dropBibles(5); vh = 6.0; vx += 2.5; points += 100; addPop(P_BOOM, 0); markUsed(k); burst(mx, 4, 14, 2.5); snd.tone(NOTE_D2, 90, NOTE_A1, 120, NOTE_D1, 160);
         burst(mx, 4, 4, 0.6, 1); boomX = x0 + 9; boomT = 24; shakeT = 14; setPose(PO_BALL, 55, 1.4); sootT = 70;
         ab.digitalWriteRGB(RED_LED, RGB_ON); break;
       case G_MINI:   // dropped into a ground cannon: it fires him again
-        markUsed(k); miniSeg = k; miniT = 36; vx = vh = 0; mx = x0 + 9; mh = 8; return;
+        markUsed(k); miniSeg = k; miniT = 36; vx = vh = 0; mx = x0 + 9; mh = 8; snd.tone(NOTE_C3, 30, 0, 40, NOTE_C3, 30); return;   // clunk-clunk, loaded
       case G_HAY: stopMan(2); return;
       case G_CACTUS: stopMan(3); mx = x0 - 6; mh = 0; return;
     }
@@ -516,6 +515,7 @@ void groundHit() {
     if (vh < 0) {
       if (vh < -0.7) burst(mx, 0, 3, 0.8);
       if (vh < -1.2) dropBibles(1);
+      if (vh < -0.7) snd.tone(NOTE_G2 - (int16_t)(vh * 8), 25);   // thump
       vh = -vh * 0.52; vx *= 0.84; bounced = true; bounces++;
       if (pose != PO_TUMBLE || angW * angW < 0.01) setPose(PO_TUMBLE, 0, vx * 0.12 + (random(0, 2) ? 0.15 : -0.15));
       if (vh < 0.6) vh = 0;
@@ -532,11 +532,11 @@ void airHits() {
     int32_t dx = aX(k) - (int32_t)mx; int16_t dh = aH(k) - (int16_t)mh;
     if (dx < -8 || dx > 8 || dh < -8 || dh > 8) continue;
     markUsed(k | 0x8000); hits++;
-    if (t == A_STAR) { points += 10; addPop(P_PTS, 10); }
-    else if (t == A_BALLOON) { points += 25; addPop(P_PTS, 25); vh += 2.0; burst(mx, mh, 6, 1); if (pose != PO_PRAY) setPose(PO_FLOAT, 30, 0); }
-    else if (t == A_DOVE) { dropBibles(1); points += 50; addPop(P_PTS, 50); vx += 0.6; vh += 1; burst(mx, mh, 5, 1); if (pose != PO_PRAY) setPose(PO_TUMBLE, 0, -0.5); }
-    else if (t == A_BELL) { dropBibles(2); points += 100; addPop(P_DING, 0); if (vh < 3.2) vh = 3.2; shakeT = 6; dizzyT = 90; if (pose != PO_PRAY) setPose(PO_TUMBLE, 0, 0.35); }
-    else { points += 30; addPop(P_HALLELUJAH, 0); wingsT = 200; setPose(PO_PRAY, 200, 0); }
+    if (t == A_STAR) { points += 10; addPop(P_PTS, 10); snd.tone(NOTE_E6, 25, NOTE_B6, 40); }
+    else if (t == A_BALLOON) { points += 25; addPop(P_PTS, 25); snd.tone(NOTE_C6, 10, NOTE_C3, 30); vh += 2.0; burst(mx, mh, 6, 1); if (pose != PO_PRAY) setPose(PO_FLOAT, 30, 0); }
+    else if (t == A_DOVE) { dropBibles(1); points += 50; addPop(P_PTS, 50); snd.tone(NOTE_A4, 60, NOTE_F4, 80); vx += 0.6; vh += 1; burst(mx, mh, 5, 1); if (pose != PO_PRAY) setPose(PO_TUMBLE, 0, -0.5); }
+    else if (t == A_BELL) { dropBibles(2); points += 100; addPop(P_DING, 0); snd.tone(NOTE_A5, 160, NOTE_E5, 220); if (vh < 3.2) vh = 3.2; shakeT = 6; dizzyT = 90; if (pose != PO_PRAY) setPose(PO_TUMBLE, 0, 0.35); }
+    else { points += 30; addPop(P_HALLELUJAH, 0); snd.tone(NOTE_C5, 70, NOTE_E5, 70, NOTE_G5, 140); wingsT = 200; setPose(PO_PRAY, 200, 0); }
   }
 }
 
@@ -544,7 +544,7 @@ void stepFly() {
   if (miniT) {          // waiting inside the ground cannon, then BOOM
     if (--miniT == 0) {
       mx = gX(miniSeg) + 20; mh = 18; vx = 5.6; vh = 5.6; setPose(PO_BALL, 25, 1.2); dropBibles(3);
-      points += 150; addPop(P_RELAUNCH, 0); flashT = 0; shakeT = 10;
+      points += 150; addPop(P_RELAUNCH, 0); flashT = 0; shakeT = 10; snd.tone(NOTE_G2, 60, NOTE_D2, 60, NOTE_G4, 120);   // boom with a whistle
       burst(mx, mh, 10, 2); burst(mx, mh, 4, 0.5, 1);
     }
   } else if (!stopped) {
@@ -599,6 +599,7 @@ void stepFly() {
   fireT++;
   if (fireT == 6) ab.digitalWriteRGB(RED_LED, RGB_OFF);
   if (stopped && doneT == 70) {
+    snd.tone(NOTE_G4, 90, NOTE_C5, 90, NOTE_E5, 180);   // the Flight Report
     uint32_t total = (uint32_t)((mx - CANNON_X) / PX_PER_M) + points;
     if (total > best) { best = total; EEPROM.put(64, best ^ 0xC0FFEE00UL); }
   }
@@ -630,9 +631,6 @@ int16_t row(int16_t y, const __FlashStringHelper* label, int32_t v, const __Flas
 
 void drawResult() {      // the Flight Report
   uint32_t dist = (uint32_t)((mx - CANNON_X) / PX_PER_M), total = dist + points;
-#ifdef TESTBIG
-  dist = 99999; points = 99999; total = 199998; topV = 400; maxH = 3996; airT = 5994; spun = 1584; bounces = 99; hits = 999;
-#endif
   ab.clear();
   txt(25, 0, F("FLIGHT REPORT"));
   ab.drawFastHLine(0, 8, 128, WHITE); ab.drawFastVLine(65, 10, 44, WHITE);
@@ -695,9 +693,33 @@ bool drawStory() {     // returns true once the whole text is showing
     i++;
   }
   bool done = !pgm_read_byte(&STORY[i]);
-  if (!done) { storyN++; if (tick & 8) ab.fillRect(x, y, 3, 5, WHITE); }   // blinking cursor
+  if (!done) { if (tick % 3 == 0) storyN++; if (tick & 8) ab.fillRect(x, y, 3, 5, WHITE); }   // blinking cursor
   else if (tick & 32) tiny(32, 58, F("PRESS ANY BUTTON"));
   return done;
+}
+
+// sound screen: a church bell. ON: it swings and rings, DING... DONG. OFF: it hangs still. SHHH...
+uint8_t popT;
+void drawSound() {
+  ab.drawRect(0, 0, 128, 64, WHITE);
+  txt2(34, 3, F("SOUND"));
+  bool on = ab.audio.enabled();
+  int8_t j = -(popT >> 1); if (popT) popT--;
+  ab.drawFastHLine(54, 22, 20, WHITE); ab.drawFastVLine(63, 22, 3, WHITE);      // beam and rope
+  uint8_t f = on ? (tick >> 4) & 1 : 0;
+  spr(56 + (on ? (f ? 1 : -1) : 0), 24, FX_BELL, f);
+  if (on) {
+    for (uint8_t k = 1; k <= ((tick >> 2) & 3); k++) {                    // ringing lines on both sides
+      ab.drawFastVLine(53 - k * 3, 31 - k, 3 + k * 2, WHITE); ab.drawFastVLine(74 + k * 3, 31 - k, 3 + k * 2, WHITE);
+    }
+    if (f) tiny(88, 30, F("DONG")); else tiny(25, 30, F("DING"));
+  } else {
+    static const char SH[] PROGMEM = "SHHH...";
+    uint8_t n = (tick >> 3) & 15; if (n > 7) n = 7;                       // typed out a letter at a time
+    for (uint8_t i = 0; i < n; i++) { char c = pgm_read_byte(&SH[i]); for (uint8_t q = 0; q < 3; q++) col8(80 + i * 4 + q, 30, pgm_read_byte(&TINY[(c - 32) * 3 + q])); }
+  }
+  txt(on ? 46 : 43, 44 + j, on ? F("< ON >") : F("< OFF >"));
+  if (tick & 32) tiny(40, 56, F("PRESS A OR B"));
 }
 
 void drawTitle() {
@@ -707,7 +729,7 @@ void drawTitle() {
 }
 
 void setup() {
-  ab.boot(); ab.display(); FX::begin(FX_DATA_PAGE); ab.setFrameRate(60); ab.initRandomSeed();
+  ab.boot(); ab.display(); FX::begin(FX_DATA_PAGE); ab.audio.begin(); ab.setFrameRate(60); ab.initRandomSeed();
   EEPROM.get(64, best); best ^= 0xC0FFEE00UL; if (best > 9999999UL) best = 0;
 }
 
@@ -718,7 +740,15 @@ void loop() {
   switch (mode) {
     case M_TITLE:
       drawTitle();
-      if (ab.justPressed(A_BUTTON | B_BUTTON | UP_BUTTON | DOWN_BUTTON | LEFT_BUTTON | RIGHT_BUTTON)) { mode = M_STORY; storyN = 0; }
+      if (ab.justPressed(A_BUTTON | B_BUTTON | UP_BUTTON | DOWN_BUTTON | LEFT_BUTTON | RIGHT_BUTTON)) { mode = M_SOUND; tick = 0; }
+      break;
+    case M_SOUND:                                                          // sound on or off, then the story
+      drawSound();
+      if (tick > 10 && ab.justPressed(UP_BUTTON | DOWN_BUTTON | LEFT_BUTTON | RIGHT_BUTTON)) {
+        ab.audio.toggle(); ab.audio.saveOnOff(); popT = 8;
+        if (ab.audio.enabled()) snd.tone(NOTE_A5, 120, NOTE_E5, 180);          // ding-dong
+      }
+      if (tick > 10 && ab.justPressed(A_BUTTON | B_BUTTON)) { mode = M_STORY; storyN = 0; }
       break;
     case M_STORY: {
       bool done = drawStory();
@@ -778,5 +808,6 @@ void loop() {
       }
       break;
   }
+  if (mode <= M_POWER || mode == M_SOUND) { if (!snd.playing()) snd.tones(SONG); }   // menu and aiming music; firing cuts in with the BOOM
   FX::display();
 }
