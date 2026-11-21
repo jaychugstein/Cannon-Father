@@ -100,18 +100,18 @@ import re
 from font5x7 import FONT
 def big_text(d,s,x0,y0):
     # each glyph pixel -> 1.5x using an 8x11 cell
-    xm=[0,1,3,5,7]; xw=[1,2,2,2,1]          # 8 wide (as before, so it clears his waving hand) and twice as tall
+    xm=[0,2,3,4,5]; xw=[2,1,1,1,2]          # 7 wide with bold sides, 2 pixels between letters, and twice as tall
     ym=[0,2,4,6,8,10,12]; yh=[2,2,2,2,2,2,2]
     for ch in s:
         if ch=='+':      # a cross standing in for the T
             d.rectangle((x0+3,y0-2,x0+4,y0+13),fill=1)
-            d.rectangle((x0,y0+2,x0+7,y0+3),fill=1)
+            d.rectangle((x0,y0+2,x0+6,y0+3),fill=1)
             x0+=9; continue
         g=FONT[ord(ch)*5:ord(ch)*5+5]
         for cx in range(5):
             for cy in range(7):
                 if g[cx]>>cy&1:
-                    d.rectangle((x0+xm[cx],y0+ym[cy],x0+xm[cx]+xw[cx],y0+ym[cy]+yh[cy]-1),fill=1)
+                    d.rectangle((x0+xm[cx],y0+ym[cy],x0+xm[cx]+xw[cx]-1,y0+ym[cy]+yh[cy]-1),fill=1)
         x0+=9
 def frame(f):
     im=Image.new('1',(128,64),0); d=ImageDraw.Draw(im)
