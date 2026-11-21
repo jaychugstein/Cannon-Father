@@ -724,8 +724,8 @@ void drawSound() {
 
 void drawTitle() {
   FX::drawBitmap(0, 0, FX_TITLEANIM, (tick >> 2) & 31, dbmNormal);
-  char b[12]; txt(2, 33, F("BEST")); ltoa(best, b, 10); txt(32, 33, b);
-  if (tick & 32) { txt(2, 45, F("PRESS ANY")); txt(2, 54, F("BUTTON")); }
+  tinyN(tiny(2, 37, F("BEST ")), 37, best);                     // (small, so the title stands out)
+  if (tick & 32) { tiny(2, 47, F("PRESS ANY")); tiny(8, 54, F("BUTTON")); }   // BUTTON centred under PRESS ANY
 }
 
 void setup() {

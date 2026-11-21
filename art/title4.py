@@ -95,17 +95,17 @@ def barrel():
             if o*2>=SS*SS: O[(x,y)]=1; I[(x,y)]=1 if w*2>=SS*SS else 0
     return I,O
 BI,BO=barrel()
-# smaller title text, baked in (5x7 font drawn 1.5x)
+# the title, baked in (the 5x7 font drawn 1.5x wide, 2x tall)
 import re
 from font5x7 import FONT
 def big_text(d,s,x0,y0):
     # each glyph pixel -> 1.5x using an 8x11 cell
-    xm=[0,1,3,4,6]; xw=[1,2,1,2,1]
-    ym=[0,1,3,4,6,7,9]; yh=[1,2,1,2,1,2,1]
+    xm=[0,1,3,5,7]; xw=[1,2,2,2,1]          # 8 wide (as before, so it clears his waving hand) and twice as tall
+    ym=[0,2,4,6,8,10,12]; yh=[2,2,2,2,2,2,2]
     for ch in s:
         if ch=='+':      # a cross standing in for the T
-            d.rectangle((x0+3,y0-3,x0+4,y0+10),fill=1)
-            d.rectangle((x0,y0,x0+7,y0+1),fill=1)
+            d.rectangle((x0+3,y0-2,x0+4,y0+13),fill=1)
+            d.rectangle((x0,y0+2,x0+7,y0+3),fill=1)
             x0+=9; continue
         g=FONT[ord(ch)*5:ord(ch)*5+5]
         for cx in range(5):
@@ -120,7 +120,7 @@ def frame(f):
         tw=(f+ph)%N
         if tw<2: d.line((x-1,y,x+1,y),1); d.line((x,y-1,x,y+1),1)
         elif tw!=5: d.point((x,y),1)
-    big_text(d,'CANNON',2,3); big_text(d,'FA+HER',2,17)
+    big_text(d,'CANNON',2,2); big_text(d,'FA+HER',2,18)
     # soft smoke puffs drifting up from the muzzle
     for i in range(3):
         ph=((f+i*11)%N)/N
@@ -154,10 +154,10 @@ def frame(f):
     g=[r[:] for r in PRIEST]
     MX,MY=68,61-len(g)+1
     waving = f<16
-    if waving:   # his right hand (screen left) leaves the robe to wave
-        for y in range(23,30):
+    if waving:   # his right hand (screen left) leaves the robe to wave: take the whole resting arm away, leave a clean robe edge
+        for y in range(22,31):
             for x in range(0,3): g[y][x]='.'
-            if g[y][3]=='.': g[y][3]='X'
+            g[y][3]='X'
     blink = f in (24,25)
     pts=[(x,y) for y,r in enumerate(g) for x,c in enumerate(r) if c!='.']
     for (x,y) in pts:
